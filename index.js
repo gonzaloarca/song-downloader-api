@@ -9,32 +9,19 @@ const SpotifyWebApi = require("spotify-web-api-node");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// use env variables for API keys
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-
-const YOUTUBE_API_BASE_URL = process.env.YOUTUBE_API_BASE_URL;
-const SPOTIFY_API_BASE_URL = process.env.SPOTIFY_API_BASE_URL;
+const YOUTUBE_API_BASE_URL = "https://www.googleapis.com/youtube/v3";
 
 const DEFAULT_BITRATE = 128;
 
-console.log("YOUTUBE_API_KEY", YOUTUBE_API_KEY);
-console.log("SPOTIFY_CLIENT_ID", SPOTIFY_CLIENT_ID);
-console.log("SPOTIFY_CLIENT_SECRET", SPOTIFY_CLIENT_SECRET);
-console.log("YOUTUBE_API_BASE_URL", YOUTUBE_API_BASE_URL);
-console.log("SPOTIFY_API_BASE_URL", SPOTIFY_API_BASE_URL);
+const YOUTUBE_API_HEADER = "x-youtube-api-key";
+const SPOTIFY_CLIENT_ID_HEADER = "x-spotify-client-id";
+const SPOTIFY_CLIENT_SECRET_HEADER = "x-spotify-client-secret";
 
-const spotifyApi = new SpotifyWebApi({
-	clientId: SPOTIFY_CLIENT_ID,
-	clientSecret: SPOTIFY_CLIENT_SECRET,
-});
-
-const getVideoInfo = async (videoId) => {
+const getVideoInfo = async (videoId, apiKey) => {
 	// Make a request to the YouTube API to get the video information
 	const response = await axios.get(`${YOUTUBE_API_BASE_URL}/videos`, {
 		params: {
-			key: YOUTUBE_API_KEY,
+			key: apiKey,
 			id: videoId,
 			part: "snippet",
 		},
@@ -50,11 +37,11 @@ const getVideoInfo = async (videoId) => {
 	};
 };
 
-const getVideoId = async (artist, title) => {
+const getVideoId = async (artist, title, apiKey) => {
 	// Make a request to the YouTube API to get the video information
 	const response = await axios.get(`${YOUTUBE_API_BASE_URL}/search`, {
 		params: {
-			key: YOUTUBE_API_KEY,
+			key: apiKey,
 			q: `${artist} ${title}`,
 			part: "snippet",
 			type: "video",
@@ -71,78 +58,84 @@ const getVideoId = async (artist, title) => {
 const getBitrateQuery = (query) =>
 	query.bitrate ? Number(query.bitrate) : DEFAULT_BITRATE;
 
-const downloadAudioFromYoutubeId = (videoId, bitrate) => async (req, res) => {
-	// Validate the video ID
-	if (!videoId) {
-		return res.status(400).send({ error: "Missing id parameter" });
-	}
+const getSpotifyCredentials = (headers) => {
+	const clientId = headers[SPOTIFY_CLIENT_ID_HEADER];
+	const clientSecret = headers[SPOTIFY_CLIENT_SECRET_HEADER];
 
-	if (!bitrate) {
-		bitrate = DEFAULT_BITRATE;
-	}
+	return {
+		clientId,
+		clientSecret,
+	};
+};
 
-	// Get the video information
-	const { title, author } = await getVideoInfo(videoId);
+const getYoutubeApiKey = (headers) => {
+	const apiKey = headers[YOUTUBE_API_HEADER];
 
-	// Create a writable stream to pipe the audio to
-	const audioStream = new stream.PassThrough();
+	return apiKey;
+};
 
-	// Create a writable stream to hold the converted audio
-	const convertedStream = new stream.PassThrough();
+const downloadAudioFromYoutubeId =
+	(videoId, bitrate, apiKey) => async (req, res) => {
+		// Validate the video ID
+		if (!videoId) {
+			return res.status(400).send({ error: "Missing id parameter" });
+		}
 
-	// Check for errors during the audio conversion
-	ffmpeg()
-		.format("mp3")
-		.audioCodec("libmp3lame")
-		.audioBitrate(128)
-		.audioChannels(2)
-		.on("error", (err) => {
+		if (!bitrate) {
+			bitrate = DEFAULT_BITRATE;
+		}
+
+		// Get the video information
+		const { title, author } = await getVideoInfo(videoId, apiKey);
+
+		// Create a writable stream to pipe the audio to
+		const audioStream = new stream.PassThrough();
+
+		// Create a writable stream to hold the converted audio
+		const convertedStream = new stream.PassThrough();
+
+		// Pipe the YouTube video audio stream to ffmpeg for conversion
+		const ytStream = ytdl(`https://www.youtube.com/watch?v=${videoId}`, {
+			filter: "audioonly",
+		}).on("error", (err) => {
 			console.log("An error occurred: " + err.message);
 			res.status(500).send({ error: err.message });
 		});
 
-	// Pipe the YouTube video audio stream to ffmpeg for conversion
-	const ytStream = ytdl(`https://www.youtube.com/watch?v=${videoId}`, {
-		filter: "audioonly",
-	}).on("error", (err) => {
-		console.log("An error occurred: " + err.message);
-		res.status(500).send({ error: err.message });
-	});
+		ffmpeg({ source: ytStream })
+			.format("mp3")
+			.audioCodec("libmp3lame")
+			.audioBitrate(bitrate)
+			.audioChannels(2)
+			.on("error", (err) => {
+				console.log("An error occurred: " + err.message);
+				res.status(500).send({ error: err.message });
+			})
+			.pipe(convertedStream);
 
-	ffmpeg({ source: ytStream })
-		.format("mp3")
-		.audioCodec("libmp3lame")
-		.audioBitrate(bitrate)
-		.audioChannels(2)
-		.on("error", (err) => {
-			console.log("An error occurred: " + err.message);
-			res.status(500).send({ error: err.message });
-		})
-		.pipe(convertedStream);
+		// Pipe the converted audio stream to the audio stream
+		convertedStream.pipe(audioStream);
 
-	// Pipe the converted audio stream to the audio stream
-	convertedStream.pipe(audioStream);
+		// Set the response content type to audio/mpeg
+		res.set("Content-Type", "audio/mpeg");
 
-	// Set the response content type to audio/mpeg
-	res.set("Content-Type", "audio/mpeg");
+		// Set the response header to suggest a file name for the download
+		res.set(
+			"Content-Disposition",
+			`attachment; filename="${title} - ${author}.mp3"`
+		);
 
-	// Set the response header to suggest a file name for the download
-	res.set(
-		"Content-Disposition",
-		`attachment; filename="${title} - ${author}.mp3"`
-	);
+		// Pipe the audio stream to the response object
+		audioStream.pipe(res);
+	};
 
-	// Pipe the audio stream to the response object
-	audioStream.pipe(res);
-};
-
-const findArtistAndTitleFromSpotifyId = (spotifyId) =>
+const findArtistAndTitleFromSpotifyTrackId = (trackId, spotifyApi) =>
 	spotifyApi
 		.clientCredentialsGrant()
 		.then((data) => {
 			// Save the access token so that it's used in future calls
 			spotifyApi.setAccessToken(data.body["access_token"]);
-			return spotifyApi.getTrack(spotifyId);
+			return spotifyApi.getTrack(trackId);
 		})
 		.then((data) => {
 			const artists = data.body.artists.map((artist) => artist.name).join(", ");
@@ -163,8 +156,17 @@ const findArtistAndTitleFromSpotifyId = (spotifyId) =>
 app.get("/download/from-youtube-id", async (req, res) => {
 	const videoId = req.query.id;
 	const bitrate = getBitrateQuery(req.query);
+	const apiKey = getYoutubeApiKey(req.headers);
 
-	await downloadAudioFromYoutubeId(videoId, bitrate)(req, res);
+	console.log("YouTube API Key", apiKey);
+
+	if (!apiKey) {
+		return res
+			.status(400)
+			.send({ error: `Missing ${YOUTUBE_API_HEADER} header` });
+	}
+
+	await downloadAudioFromYoutubeId(videoId, bitrate, apiKey)(req, res);
 });
 
 //
@@ -177,36 +179,79 @@ app.get("/download/from-artist-title", async (req, res) => {
 
 	console.log("artist", artist);
 	console.log("title", title);
+	console.log("bitrate", bitrate);
+
+	const apiKey = getYoutubeApiKey(req.headers);
+
+	console.log("YouTube API Key", apiKey);
+
+	if (!apiKey) {
+		return res
+			.status(400)
+			.send({ error: `Missing ${YOUTUBE_API_HEADER} header` });
+	}
 
 	// find youtube video with artist and title
-	const videoId = await getVideoId(artist, title);
+	const videoId = await getVideoId(artist, title, apiKey);
 
 	console.log("videoId", videoId);
 
 	// run the download function
-	await downloadAudioFromYoutubeId(videoId, bitrate)(req, res);
+	await downloadAudioFromYoutubeId(videoId, bitrate, apiKey)(req, res);
 });
 
 //
 // GET http://localhost:3000/download/from-spotify-id?id=0eGsygTp906u18L0Oimnem
 //
 app.get("/download/from-spotify-id", async (req, res) => {
-	const spotifyId = req.query.id;
+	const trackId = req.query.id;
 	const bitrate = getBitrateQuery(req.query);
+	const { clientId, clientSecret } = getSpotifyCredentials(req.headers);
+	const ytApiKey = getYoutubeApiKey(req.headers);
+
+	if (!clientId) {
+		return res
+			.status(400)
+			.send({ error: `Missing ${SPOTIFY_CLIENT_ID_HEADER} header` });
+	}
+
+	if (!clientSecret) {
+		return res
+			.status(400)
+			.send({ error: `Missing ${SPOTIFY_CLIENT_SECRET_HEADER} header` });
+	}
+
+	if (!ytApiKey) {
+		return res
+			.status(400)
+			.send({ error: `Missing ${YOUTUBE_API_HEADER} header` });
+	}
+
+	console.log("Spotify Client ID", clientId);
+	console.log("Spotify Client Secret", clientSecret);
+	console.log("YouTube API Key", ytApiKey);
+
+	const spotifyApi = new SpotifyWebApi({
+		clientId: clientId,
+		clientSecret: clientSecret,
+	});
 
 	// match ID to youtube video
-	const { artist, title } = await findArtistAndTitleFromSpotifyId(spotifyId);
+	const { artist, title } = await findArtistAndTitleFromSpotifyTrackId(
+		trackId,
+		spotifyApi
+	);
 
 	console.log("artist", artist);
 	console.log("title", title);
 
 	// find youtube video with artist and title
-	const videoId = await getVideoId(artist, title);
+	const videoId = await getVideoId(artist, title, ytApiKey);
 
 	console.log("videoId", videoId);
 
 	// run the download function
-	await downloadAudioFromYoutubeId(videoId, bitrate)(req, res);
+	await downloadAudioFromYoutubeId(videoId, bitrate, ytApiKey)(req, res);
 });
 
 app.listen(PORT, () => console.log("Server listening to port " + PORT));
