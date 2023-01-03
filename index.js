@@ -4,6 +4,7 @@ const ytdl = require("ytdl-core");
 const axios = require("axios");
 const ffmpeg = require("fluent-ffmpeg");
 const stream = require("stream");
+const SpotifyWebApi = require("spotify-web-api-node");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,11 +17,18 @@ const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const YOUTUBE_API_BASE_URL = process.env.YOUTUBE_API_BASE_URL;
 const SPOTIFY_API_BASE_URL = process.env.SPOTIFY_API_BASE_URL;
 
+const DEFAULT_BITRATE = 128;
+
 console.log("YOUTUBE_API_KEY", YOUTUBE_API_KEY);
 console.log("SPOTIFY_CLIENT_ID", SPOTIFY_CLIENT_ID);
 console.log("SPOTIFY_CLIENT_SECRET", SPOTIFY_CLIENT_SECRET);
 console.log("YOUTUBE_API_BASE_URL", YOUTUBE_API_BASE_URL);
 console.log("SPOTIFY_API_BASE_URL", SPOTIFY_API_BASE_URL);
+
+const spotifyApi = new SpotifyWebApi({
+	clientId: SPOTIFY_CLIENT_ID,
+	clientSecret: SPOTIFY_CLIENT_SECRET,
+});
 
 const getVideoInfo = async (videoId) => {
 	// Make a request to the YouTube API to get the video information
@@ -61,12 +69,16 @@ const getVideoId = async (artist, title) => {
 };
 
 const getBitrateQuery = (query) =>
-	query.bitrate ? Number(query.bitrate) : 128;
+	query.bitrate ? Number(query.bitrate) : DEFAULT_BITRATE;
 
 const downloadAudioFromYoutubeId = (videoId, bitrate) => async (req, res) => {
 	// Validate the video ID
 	if (!videoId) {
 		return res.status(400).send({ error: "Missing id parameter" });
+	}
+
+	if (!bitrate) {
+		bitrate = DEFAULT_BITRATE;
 	}
 
 	// Get the video information
@@ -124,6 +136,27 @@ const downloadAudioFromYoutubeId = (videoId, bitrate) => async (req, res) => {
 	audioStream.pipe(res);
 };
 
+const findArtistAndTitleFromSpotifyId = (spotifyId) =>
+	spotifyApi
+		.clientCredentialsGrant()
+		.then((data) => {
+			// Save the access token so that it's used in future calls
+			spotifyApi.setAccessToken(data.body["access_token"]);
+			return spotifyApi.getTrack(spotifyId);
+		})
+		.then((data) => {
+			const artists = data.body.artists.map((artist) => artist.name).join(", ");
+			const title = data.body.name;
+
+			return {
+				artist: artists,
+				title: title,
+			};
+		})
+		.catch((err) => {
+			console.log("Something went wrong!", err);
+		});
+
 //
 // GET http://localhost:3000/download/from-youtube-id?id=QK8mJJJvaes&bitrate=320
 //
@@ -157,10 +190,23 @@ app.get("/download/from-artist-title", async (req, res) => {
 //
 // GET http://localhost:3000/download/from-spotify-id?id=0eGsygTp906u18L0Oimnem
 //
-app.get("/download/from-spotify-id", (req, res) => {
+app.get("/download/from-spotify-id", async (req, res) => {
 	const spotifyId = req.query.id;
+	const bitrate = getBitrateQuery(req.query);
 
-	// match ID to a youtube video
+	// match ID to youtube video
+	const { artist, title } = await findArtistAndTitleFromSpotifyId(spotifyId);
+
+	console.log("artist", artist);
+	console.log("title", title);
+
+	// find youtube video with artist and title
+	const videoId = await getVideoId(artist, title);
+
+	console.log("videoId", videoId);
+
+	// run the download function
+	await downloadAudioFromYoutubeId(videoId, bitrate)(req, res);
 });
 
 app.listen(PORT, () => console.log("Server listening to port " + PORT));
