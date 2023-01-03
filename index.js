@@ -42,15 +42,28 @@ const getVideoInfo = async (videoId) => {
 	};
 };
 
-//
-// GET http://localhost:3000/download/from-youtube-id?id=QK8mJJJvaes&bitrate=320
-//
-app.get("/download/from-youtube-id", async (req, res) => {
-	// Get the video ID from the request query parameters
-	const videoId = req.query.id;
-	// convert bitrate to number
-	const bitrate = req.query.bitrate ? Number(req.query.bitrate) : 128;
+const getVideoId = async (artist, title) => {
+	// Make a request to the YouTube API to get the video information
+	const response = await axios.get(`${YOUTUBE_API_BASE_URL}/search`, {
+		params: {
+			key: YOUTUBE_API_KEY,
+			q: `${artist} ${title}`,
+			part: "snippet",
+			type: "video",
+			maxResults: 1,
+		},
+	});
 
+	// Extract the video title and author from the response
+	const videoId = response.data.items[0].id.videoId;
+
+	return videoId;
+};
+
+const getBitrateQuery = (query) =>
+	query.bitrate ? Number(query.bitrate) : 128;
+
+const downloadAudioFromYoutubeId = (videoId, bitrate) => async (req, res) => {
 	// Validate the video ID
 	if (!videoId) {
 		return res.status(400).send({ error: "Missing id parameter" });
@@ -109,16 +122,36 @@ app.get("/download/from-youtube-id", async (req, res) => {
 
 	// Pipe the audio stream to the response object
 	audioStream.pipe(res);
+};
+
+//
+// GET http://localhost:3000/download/from-youtube-id?id=QK8mJJJvaes&bitrate=320
+//
+app.get("/download/from-youtube-id", async (req, res) => {
+	const videoId = req.query.id;
+	const bitrate = getBitrateQuery(req.query);
+
+	await downloadAudioFromYoutubeId(videoId, bitrate)(req, res);
 });
 
 //
 // GET http://localhost:3000/download/from-artist-title?artist=eminem&title=stan
 //
-app.get("/download/from-artist-title", (req, res) => {
+app.get("/download/from-artist-title", async (req, res) => {
 	const artist = req.query.artist;
 	const title = req.query.title;
+	const bitrate = getBitrateQuery(req.query);
+
+	console.log("artist", artist);
+	console.log("title", title);
 
 	// find youtube video with artist and title
+	const videoId = await getVideoId(artist, title);
+
+	console.log("videoId", videoId);
+
+	// run the download function
+	await downloadAudioFromYoutubeId(videoId, bitrate)(req, res);
 });
 
 //
