@@ -30,10 +30,12 @@ const getVideoInfo = async (videoId, apiKey) => {
 	// Extract the video title and author from the response
 	const videoTitle = response.data.items[0].snippet.title;
 	const videoAuthor = response.data.items[0].snippet.channelTitle;
+	const videoDuration = response.data.items[0].contentDetails.duration;
 
 	return {
 		title: videoTitle,
 		author: videoAuthor,
+		duration: videoDuration,
 	};
 };
 
@@ -75,7 +77,8 @@ const getYoutubeApiKey = (headers) => {
 };
 
 const downloadAudioFromYoutubeId =
-	(videoId, bitrate, apiKey) => async (req, res) => {
+	(videoId, bitrate, apiKey, spotifyId = null) =>
+	async (req, res) => {
 		// Validate the video ID
 		if (!videoId) {
 			return res.status(400).send({ error: "Missing id parameter" });
@@ -86,7 +89,7 @@ const downloadAudioFromYoutubeId =
 		}
 
 		// Get the video information
-		const { title, author } = await getVideoInfo(videoId, apiKey);
+		const { title, author, duration } = await getVideoInfo(videoId, apiKey);
 
 		// Create a writable stream to pipe the audio to
 		const audioStream = new stream.PassThrough();
@@ -124,6 +127,13 @@ const downloadAudioFromYoutubeId =
 			"Content-Disposition",
 			`attachment; filename="${title} - ${author}.mp3"`
 		);
+
+		// Set other custom metadata headers
+		res.set("X-Artist", author);
+		res.set("X-Title", title);
+		res.set("X-Duration", duration);
+		res.set("X-YouTube-Id", videoId);
+		res.set("X-Spotify-Id", spotifyId);
 
 		// Pipe the audio stream to the response object
 		audioStream.pipe(res);
@@ -251,7 +261,12 @@ app.get("/download/from-spotify-id", async (req, res) => {
 	console.log("videoId", videoId);
 
 	// run the download function
-	await downloadAudioFromYoutubeId(videoId, bitrate, ytApiKey)(req, res);
+	await downloadAudioFromYoutubeId(
+		videoId,
+		bitrate,
+		ytApiKey,
+		trackId
+	)(req, res);
 });
 
 app.listen(PORT, () => console.log("Server listening to port " + PORT));
