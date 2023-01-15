@@ -5,6 +5,8 @@ const axios = require("axios");
 const ffmpeg = require("fluent-ffmpeg");
 const stream = require("stream");
 const SpotifyWebApi = require("spotify-web-api-node");
+const cors = require("cors");
+const querystring = require("querystring");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +18,16 @@ const DEFAULT_BITRATE = 128;
 const YOUTUBE_API_HEADER = "x-youtube-api-key";
 const SPOTIFY_CLIENT_ID_HEADER = "x-spotify-client-id";
 const SPOTIFY_CLIENT_SECRET_HEADER = "x-spotify-client-secret";
+
+app.use(cors());
+
+const dec2hex = (dec) => dec.toString(16).padStart(2, "0");
+
+const generateId = (len) => {
+	var arr = new Uint8Array((len || 40) / 2);
+	window.crypto.getRandomValues(arr);
+	return Array.from(arr, dec2hex).join("");
+};
 
 const getVideoInfo = async (videoId, apiKey) => {
 	// Make a request to the YouTube API to get the video information
@@ -267,6 +279,23 @@ app.get("/download/from-spotify-id", async (req, res) => {
 		ytApiKey,
 		trackId
 	)(req, res);
+});
+
+app.get("/auth/spotify", async (req, res) => {
+	var state = generateId(16);
+	var scope =
+		"playlist-read-private playlist-read-collaborative user-library-read";
+
+	res.redirect(
+		"https://accounts.spotify.com/authorize?" +
+			querystring.stringify({
+				response_type: "code",
+				client_id: process.env.SPOTIFY_CLIENT_ID,
+				scope: scope,
+				redirect_uri: process.env.SPOTIFY_REDIRECT_URI,
+				state: state,
+			})
+	);
 });
 
 app.listen(PORT, () => console.log("Server listening to port " + PORT));
