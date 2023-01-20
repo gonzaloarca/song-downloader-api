@@ -332,4 +332,33 @@ app.get("/auth/spotify/callback", async (req, res) => {
 	}
 });
 
+app.get("/auth/spotify/refresh", async (req, res) => {
+	const refreshToken = req.query.refresh_token;
+
+	const spotifyApi = new SpotifyWebApi({
+		clientId: process.env.SPOTIFY_CLIENT_ID,
+		clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+	});
+
+	console.log("refreshToken", refreshToken);
+
+	spotifyApi.setRefreshToken(refreshToken);
+
+	try {
+		const data = await spotifyApi.refreshAccessToken();
+		console.log(data);
+
+		const accessToken = data.body["access_token"];
+		const expiresIn = data.body["expires_in"];
+
+		// send access token to client in API response
+		res.send({
+			access_token: accessToken,
+			expires_in: expiresIn,
+		});
+	} catch (err) {
+		console.error("Something went wrong when refreshing Spotify token!", err);
+	}
+});
+
 app.listen(PORT, () => console.log("Server listening to port " + PORT));
