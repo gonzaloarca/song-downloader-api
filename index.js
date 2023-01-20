@@ -7,6 +7,7 @@ const stream = require("stream");
 const SpotifyWebApi = require("spotify-web-api-node");
 const cors = require("cors");
 const querystring = require("querystring");
+const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,7 +26,7 @@ const dec2hex = (dec) => dec.toString(16).padStart(2, "0");
 
 const generateId = (len) => {
 	var arr = new Uint8Array((len || 40) / 2);
-	window.crypto.getRandomValues(arr);
+	crypto.getRandomValues(arr);
 	return Array.from(arr, dec2hex).join("");
 };
 
@@ -296,6 +297,39 @@ app.get("/auth/spotify", async (req, res) => {
 				state: state,
 			})
 	);
+});
+
+app.get("/auth/spotify/callback", async (req, res) => {
+	const code = req.query.code || null;
+	const state = req.query.state || null;
+
+	const spotifyApi = new SpotifyWebApi({
+		clientId: process.env.SPOTIFY_CLIENT_ID,
+		clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+	});
+
+	console.log("code", code);
+	console.log("state", state);
+
+	spotifyApi.setRedirectURI(process.env.SPOTIFY_REDIRECT_URI);
+
+	try {
+		const data = await spotifyApi.authorizationCodeGrant(code);
+		console.log(data);
+
+		const accessToken = data.body["access_token"];
+		const refreshToken = data.body["refresh_token"];
+		const expiresIn = data.body["expires_in"];
+
+		// send access token to client in API response
+		res.send({
+			access_token: accessToken,
+			refresh_token: refreshToken,
+			expires_in: expiresIn,
+		});
+	} catch (err) {
+		console.error("Something went wrong when authorizing Spotify code!", err);
+	}
 });
 
 app.listen(PORT, () => console.log("Server listening to port " + PORT));
