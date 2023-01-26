@@ -7,6 +7,8 @@ from spotdl import Spotdl
 from dotenv import load_dotenv
 from spotipy import SpotifyOAuth
 from spotipy.exceptions import SpotifyException
+from starlette.background import BackgroundTasks
+
 
 import traceback
 import requests
@@ -33,6 +35,13 @@ app.add_middleware(
 )
 
 
+def remove_file(path: str):
+    try:
+        os.remove(path)
+    except Exception as e:
+        print(e)
+
+
 def generate_id(length: int) -> str:
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
@@ -47,7 +56,8 @@ spotify_dl = Spotdl(client_id=os.environ["SPOTIFY_CLIENT_ID"],
 
 @app.get("/download/from-spotify-id")
 async def download_audio_from_spotify_id(
-    id: str = Query(...), bitrate: int = Query(320, ge=128, le=320)
+    id: str = Query(...), bitrate: int = Query(320, ge=128, le=320),
+    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     spotify_dl.downloader.bitrate = f"{bitrate}k"
 
@@ -56,6 +66,8 @@ async def download_audio_from_spotify_id(
         print(songs)
         song, path = spotify_dl.download(songs[0])
         print(song, path)
+
+        background_tasks.add_task(remove_file, path)
         return FileResponse(path)
     except Exception as e:
         print(e)
