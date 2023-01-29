@@ -132,3 +132,7 @@ dmypy.json
 *.wav
 *.mp3
 *.webm
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
