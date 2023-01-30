@@ -1,5 +1,6 @@
 import random
 import string
+from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,11 +17,15 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
-# load_dotenv()
+load_dotenv()
+FRONTEND_URL = os.environ["FRONTEND_URL"]
+WWW_URL = os.environ["WWW_URL"]
+SPOTIFY_REDIRECT_PATH = os.environ["SPOTIFY_REDIRECT_PATH"]
+SPOTIFY_REDIRECT_URI = f"{FRONTEND_URL}{SPOTIFY_REDIRECT_PATH}"
 
 origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
+    FRONTEND_URL,
+    WWW_URL,
 ]
 
 app = FastAPI()
@@ -84,7 +89,7 @@ async def spotify_auth():
         "response_type": "code",
         "client_id": os.environ["SPOTIFY_CLIENT_ID"],
         "scope": scope,
-        "redirect_uri": os.environ["SPOTIFY_REDIRECT_URI"],
+        "redirect_uri": SPOTIFY_REDIRECT_URI,
         "state": state,
     }
 
@@ -100,7 +105,7 @@ async def spotify_callback(
     spotify_oauth = SpotifyOAuth(
         client_id=os.environ["SPOTIFY_CLIENT_ID"],
         client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-        redirect_uri=os.environ["SPOTIFY_REDIRECT_URI"]
+        redirect_uri=SPOTIFY_REDIRECT_URI
     )
 
     try:
@@ -121,7 +126,7 @@ async def spotify_refresh(
     spotify_oauth = SpotifyOAuth(
         client_id=os.environ["SPOTIFY_CLIENT_ID"],
         client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-        redirect_uri=os.environ["SPOTIFY_REDIRECT_URI"]
+        redirect_uri=SPOTIFY_REDIRECT_URI
     )
 
     try:
