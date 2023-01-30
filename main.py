@@ -4,7 +4,6 @@ from fastapi import FastAPI, Query, Response
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from spotdl import Spotdl
-from dotenv import load_dotenv
 from spotipy import SpotifyOAuth
 from spotipy.exceptions import SpotifyException
 from starlette.background import BackgroundTasks
@@ -17,7 +16,7 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
-load_dotenv()
+# load_dotenv()
 
 origins = [
     "http://localhost:3000",
