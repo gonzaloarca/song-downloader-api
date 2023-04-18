@@ -4,5 +4,4 @@ python-dotenv==0.21.1
 requests==2.28.2
 spotdl>=4.1.0
 yt-dlp
-spotipy==2.22.0
 uvicorn[standard]==0.20.0
