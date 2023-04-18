@@ -2,6 +2,7 @@ fastapi==0.89.1
 nest_asyncio==1.5.6
 python-dotenv==0.21.1
 requests==2.28.2
-spotdl==4.0.7
+spotdl
+yt-dlp
 spotipy==2.22.0
 uvicorn[standard]==0.20.0
