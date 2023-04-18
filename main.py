@@ -52,10 +52,12 @@ def generate_id(length: int) -> str:
 
 spotify_dl = Spotdl(client_id=os.environ["SPOTIFY_CLIENT_ID"],
                     client_secret=os.environ["SPOTIFY_CLIENT_SECRET"],
-                    print_errors=True,
-                    log_level="DEBUG",
-                    overwrite="force"
-                    )
+                    downloader_settings={
+                        "print_errors": True,
+                        "log_level": "DEBUG",
+                        "overwrite": "force",
+}
+)
 
 
 @app.get("/")
