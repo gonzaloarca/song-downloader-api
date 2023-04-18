@@ -58,6 +58,11 @@ spotify_dl = Spotdl(client_id=os.environ["SPOTIFY_CLIENT_ID"],
                     )
 
 
+@app.get("/")
+async def root():
+    return {"message": "Status: OK"}
+
+
 @app.get("/download/from-spotify-id")
 async def download_audio_from_spotify_id(
     id: str = Query(...), bitrate: int = Query(320, ge=128, le=320),
