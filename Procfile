@@ -1,1 +1,1 @@
-web: gunicorn main:app --workers=4 --worker-class=worker.AsyncioLoopUvicornWorker
+web: gunicorn main:app --workers=2 --worker-class=worker.AsyncioLoopUvicornWorker
